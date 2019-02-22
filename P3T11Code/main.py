@@ -10,7 +10,7 @@ gyroNumReads = 5 #number of gyro read attempts until averaging
 initialGyroAngle = "No Initial" #initial angle of gyro
 
 BP = brickpi3.BrickPi3()
-BP.set_sensor_type(BP.PORT_4, BP.SENSOR_TYPE.EV3_GYRO_ABS) #set up Gyro
+BP.set_sensor_type(BP.PORT_4, BP.SENSOR_TYPE.EV3_GYRO_ABS_DPS) #set up Gyro
 
 BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A)) #reset positions
 BP.offset_motor_encoder(BP.PORT_B, BP.get_motor_encoder(BP.PORT_B)) #reset positions
@@ -19,7 +19,6 @@ BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D)) #reset posit
 
 #TEST
 print(BP.get_sensor(BP.PORT_4))
-#GitTest Yolo
 #TEST
 
 #get initial angle
