@@ -1,0 +1,11 @@
+Team: 11
+Map: 0
+Unit Length: 10
+Unit: cm
+Origin: (2,0)
+Notes: This is an example map
+0,0,0,0,0
+0,0,0,0,0
+0,0,0,0,0
+0,0,0,0,0
+0,0,0,0,0
