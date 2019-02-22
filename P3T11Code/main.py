@@ -19,6 +19,7 @@ BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D)) #reset posit
 
 #TEST
 print(BP.get_sensor(BP.PORT_4))
+#GitTest
 #TEST
 
 #get initial angle
