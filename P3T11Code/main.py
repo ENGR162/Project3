@@ -1,5 +1,6 @@
 from __future__ import print_function
 from __future__ import division
+import MPU9250
 import brickpi3
 import grovepi
 import IR_Functions
@@ -8,17 +9,20 @@ import math
 
 #Setup_Instructions____________________________________________________________
 """
-1. Face bot north in relation to the map when starting program
-2. Face ultrasonic sensor to the front of the bot before starting
-3. Determine if wheelDiameter variable is accurate for wheels/tracks
+# 1. Face bot north in relation to the map when starting program
+# 2. Face ultrasonic sensor to the front of the bot before starting
+# 3. Determine if wheelDiameter variable is accurate for wheels/tracks
 """
+#MPU___________________________________________________________________________
+mpu = MPU9250.MPU9250()
 
 #BrickPi_______________________________________________________________________
-gyroNumReads = 5 #number of gyro read attempts until averaging
-ultraNumReads = 5 #number of ultrasonic read attempts until averaging
-hallNumReads = 5 #number of hall read attempts until averaging
-irNumReads = 5 #number of IR sensor read attempts until averaging
-initialGyroAngle = 0
+gyroNumReads = 5 #number of gyro reads until averaging
+ultraNumReads = 5 #number of ultrasonic reads until averaging
+hallNumReads = 5 #number of hall reads until averaging
+irNumReads = 5 #number of IR sensor reads until averaging
+magNumReads = 5 #number of IMU magnetic sensor reads until averaging
+initialGyroAngle = 0 #maybe unesscessary var
 
 ultraRightPort = 3 #port number of right side ultrasonic sensor
 ultraLeftPort = 8 #port number of left side ultrasonic sensor
@@ -98,7 +102,6 @@ while ultraTestLeftBool:
     except IOError:
         print ("Initial Distance Left IOError") #print error
 
-
 #IR sensor
 irTestBool = True
 while irTestBool:
@@ -112,20 +115,32 @@ while irTestBool:
     except IOError:
         print ("IR IOError") #print error
 
+#IMU sensor
+imuTestBool = True
+while imuTestBool:
+    try:
+        test = mpu.readMagnet() #test sensor
+        imuTestBool = False
+    
+    except TypeError:
+        print ("IMU TypeError") #print error
+    
+    except IOError:
+        print ("IMU IOError") #print error
 #______________________________________________________________________________
 
 #BrickPi_Functions_____________________________________________________________
 def MeasureAngle():
-    measurements = 0 #variable to store all measurements
-    successfulMeasures = 0 #variable to count all successful measures
+    measurements = 0.0 #variable to store all measurements
+    successfulMeasures = 0.0 #variable to count all successful measures
     
     while successfulMeasures < gyroNumReads:
         try:
             read = BP.get_sensor(BP.PORT_4)[0] #storing angle from gyro
             measurements += read #adding angle to total variable
-            successfulMeasures += 1 #registering as successful measure
+            successfulMeasures += 1.0 #registering as successful measure
             
-        except TypeError as error:
+        except TypeError:
             print ("Gyro Read TypeError") #print read error
             
         except IOError:
@@ -138,14 +153,14 @@ def MeasureAngle():
     return((measurements / successfulMeasures) - initialGyroAngle) #returns average value of angle
 
 def MeasureDistance():
-    measurements = 0 #variable to store all measurements
-    successfulMeasures = 0 #variable to count all successful measures
+    measurements = 0.0 #variable to store all measurements
+    successfulMeasures = 0.0 #variable to count all successful measures
     
     while successfulMeasures < ultraNumReads:
         try:
             read = BP.get_sensor(BP.PORT_3) #storing distance from ultrasonic
             measurements += read #adding distance to total variable
-            successfulMeasures += 1 #registering as successful measure
+            successfulMeasures += 1.0 #registering as successful measure
             
         except TypeError:
             print ("Ultra Read TypeError") #print read error
@@ -161,62 +176,44 @@ def MeasureDistance():
 
 #GrovePi_Functions_____________________________________________________________
 def MeasureSideDistance(port):
-    measurements = 0 #variable to store all measurements
-    successfulMeasures = 0 #variable to count all successful measures
+    measurements = 0.0 #variable to store all measurements
+    successfulMeasures = 0.0 #variable to count all successful measures
     
     while successfulMeasures < ultraNumReads:
         try:
             read = grovepi.ultrasonicRead(port)#storing distance from ultrasonic
             measurements += read #adding distance to total variable
-            successfulMeasures += 1 #registering as successful measure
+            successfulMeasures += 1.0 #registering as successful measure
             
         except TypeError:
             print ("Ultra Read Side TypeError") #print read error
             
         except IOError:
             print ("Ultra Read Side IOError") #print read error
-            
-        except brickpi3.SensorError:
-            print ("Ultra Read Side BP Sensor Error") #print read error
 
-    return(measurements / successfulMeasures) #returns average value of distance
+    sideDis = measurements / successfulMeasures
+    #clamping value
+    if(sideDis > 10.0):
+        sideDis = 10.0
+    elif(sideDis < -10.0):
+        sideDis = -10.0
+
+    return(sideDis) #returns average value of distance
 
 def MeasureRightLeftSideDis():
     #Right distance is first in array, then left distance
     return ([MeasureSideDistance(ultraRightPort), MeasureSideDistance(ultraLeftPort)])
 
-"""
-def MeasureMagneticFields():
-    measurements = 0 #variable to store all measurements
-    successfulMeasures = 0 #variable to count all successful measures
-    
-    while successfulMeasures < hallNumReads:
-        try:
-            read = BP.get_sensor(BP.PORT_1) #storing magnetic field from hall
-            measurements += read #adding magnetic field to total variable
-            successfulMeasures += 1 #registering as successful measure
-            
-        except TypeError:
-            print ("Hall Read TypeError") #print read error
-            
-        except IOError:
-            print ("Hall Read IOError") #print read error
-            
-        except brickpi3.SensorError:
-            print ("Hall Read Sensor Error") #print read error
-
-    return(measurements / successfulMeasures) #returns average value of magnetic field
-"""
 def MeasureIR():
-    measurements = [0, 0] #variable to store all measurements
-    successfulMeasures = 0 #variable to count all successful measures
+    measurements = [0.0, 0.0] #variable to store all measurements
+    successfulMeasures = 0.0 #variable to count all successful measures
     
     while successfulMeasures < irNumReads:
         try:
             read = IR_Functions.IR_Read(grovepi) #storing IR from IR sensor
             measurements[0] += read[0] #adding IR one to total variable
             measurements[1] += read[1] #adding IR two to total variable
-            successfulMeasures += 1 #registering as successful measure
+            successfulMeasures += 1.0 #registering as successful measure
             
         except TypeError:
             print ("IR Read TypeError") #print read error
@@ -225,46 +222,72 @@ def MeasureIR():
             print ("IR Read IOError") #print read error
 
     return([measurements[0] / successfulMeasures, measurements[1] / successfulMeasures]) #returns average value of IR
+
+#______________________________________________________________________________
+
+#IMU_Functions_________________________________________________________________
+
+def MeasureMagneticFields():
+
+    fields = [0.0, 0.0, 0.0] #variable to store all measurements
+    successfulMeasures = 0.0 #variable to count all successful measures
+    
+    while successfulMeasures < magNumReads:
+        try:
+            read = mpu.readMagnet() #IMU magnetic reading
+            fields[0] += read["x"]
+            fields[1] += read["y"]
+            fields[2] += read["z"]
+            successfulMeasures += 1.0 #registering as successful measure
+            
+        except TypeError:
+            print ("IMU Magnetic Read TypeError") #print read error
+            
+        except IOError:
+            print ("IMU Magnetic Read IOError") #print read error
+
+    return([fields[0] / successfulMeasures, fields[1] / successfulMeasures, fields[2] / successfulMeasures]) #returns average value of Magnetic Field Directions as list
+
 #______________________________________________________________________________
 
 #Mapping_______________________________________________________________________
 
 #Utility_Mapping_Key___________________________________________________________
 """
-GEARS Operation Key #Use during operation
-
-0 = Unknown
-1 = Open but untraveled path
-2 = Traveled path and clear
-3 = Origin
-4 = IR Danger grid location
-5 = Magnetic Danger grid location
-6 = Exit point untraveled
-7 = Exit point traveled
-
-GEARS Output Key #Use for output
-
-0 = Not part of the path
-1 = Path GEARS took
-2 = Heat Source
-3 = Magnetic Source
-4 = Exit point
-5 = Origin(starting point of GEARS)
+# GEARS Operation Key #Use during operation
+#
+# 0 = Unknown
+# 1 = Open but untraveled path
+# 2 = Traveled path and clear
+# 3 = Origin
+# 4 = IR Danger grid location
+# 5 = Magnetic Danger grid location
+# 6 = Exit point untraveled
+# 7 = Exit point traveled
+#
+# GEARS Output Key #Use for output
+#
+# 0 = Not part of the path
+# 1 = Path GEARS took
+# 2 = Heat Source
+# 3 = Magnetic Source
+# 4 = Exit point
+# 5 = Origin(starting point of GEARS)
 """
 #______________________________________________________________________________
 
-mapWidth = 8
+mapWidth = 5
 mapHeight = 5
 
 teamNumber = 11
 mapNumber = 0
 GridUnit = 40
 unit = "cm"
-origin = [4,0]
+origin = [2,2]
 mapNotes = "This is an example map"
 hazardsNotes = "This is an example of resource information"
 
-mapData = []
+mapData = [[0,0,0,0,0],[0,0,1,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]]
 
 currentHeading = "North" #Setting inital heading
 gearsCurrentGridLocation = origin
@@ -489,10 +512,6 @@ def ConvertSpeedToDps(linearSpeed):
     angularSpeed = 360 * linearSpeed / (wheelDiameter * math.pi)
     return(angularSpeed) #returns angular speed in dps
     
-def ConvertDistanceToAngle(linearDistance):
-    angle = 360 * linearDistance / (wheelDiameter * math.pi)
-    return(angle) #returns distance in degrees with reference to wheeldiameter
-    
 def DriveStraightDistance(distance, travelTime):
 
     if(travelTime == 0):
@@ -504,7 +523,7 @@ def DriveStraightDistance(distance, travelTime):
     angularSpeed = ConvertSpeedToDps(distance / travelTime) #calculated desired speed
     
     initialMotorAngle = BP.get_motor_encoder(BP.PORT_B) #use motor port B as initial
-    finalMotorAngle = ConvertDistanceToAngle(distance) + initialMotorAngle #final desired angle
+    finalMotorAngle = ConvertSpeedToDps(distance) + initialMotorAngle #final desired angle
     
     while ((math.fabs(finalMotorAngle) - math.fabs(BP.get_motor_encoder(BP.PORT_B))) > 0): #keep moving until moved set distance
         BP.set_motor_dps(BP.PORT_B, angularSpeed)
@@ -513,7 +532,62 @@ def DriveStraightDistance(distance, travelTime):
         
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
-    
+
+def DriveCorridor(distance, travelSpeed = 15.0, sideFact = 0.1, angleFact = 0.3): #advanced funtion to maintain wall distance 
+
+    if(distance == 0 or travelSpeed == 0):
+        return
+
+    BP.set_motor_dps(BP.PORT_B, 0)
+    BP.set_motor_dps(BP.PORT_C, 0)
+    BP.offset_motor_encoder(BP.PORT_B, BP.get_motor_encoder(BP.PORT_B)) #reset positions
+    BP.offset_motor_encoder(BP.PORT_C, BP.get_motor_encoder(BP.PORT_C)) #reset positions
+
+    RotateVisorToAngle(8)
+    startingAngle = MeasureAngle()
+    distanceToTravel = ConvertSpeedToDps(distance)
+    currentDistance = 0.0
+
+    while distanceToTravel > 0:
+        frontDis = MeasureDistance()
+
+        if(frontDis <= 5):
+            break
+
+        #measures
+        currentAngle = MeasureAngle() - startingAngle
+        sideDistances = MeasureRightLeftSideDis()
+        distanceGap = sideDistances[1] - sideDistances[0]
+
+        #clamping distance
+        if(distanceGap > 10):
+            distanceGap = 10
+        elif(distanceGap < -10):
+            distanceGap = -10
+
+        #distance calulations
+        prevDis = currentDistance
+        currentDistance = (BP.get_motor_encoder(BP.PORT_B) + BP.get_motor_encoder(BP.PORT_C)) / 2
+        stepDis = (currentDistance - prevDis) * math.cos(abs(currentAngle)) #distance moved in desired direction
+        distanceToTravel -= stepDis
+
+        #cm/s calculations
+        angleSpeed = currentAngle * angleFact #pos if leaning right
+        distSpeed = distanceGap * sideFact #pos if straying right
+        driveSpeed = travelSpeed / (1 + math.exp(-0.002 * (distanceToTravel - 600))) #logistic feedback control
+
+        #motor speed calculation
+        rightAngSpeed = ConvertSpeedToDps(driveSpeed + angleSpeed + distSpeed)
+        leftAngSpeed = ConvertSpeedToDps(driveSpeed - angleSpeed - distSpeed)
+
+        BP.set_motor_dps(BP.PORT_B, rightAngSpeed) #right
+        BP.set_motor_dps(BP.PORT_C, leftAngSpeed) #left
+
+        time.sleep(0.02)
+
+    BP.set_motor_dps(BP.PORT_B, 0)
+    BP.set_motor_dps(BP.PORT_C, 0)  
+
 def DriveAtSpeed(linearSpeed, travelTime):
     angularSpeed = ConvertSpeedToDps(linearSpeed)
     
@@ -615,7 +689,6 @@ def ScanAllSides():
 
 def MoveToAdjacentGrid(direction):
     
-    travelTimeMultiplier = 0.25
     global currentHeading
     print("Current Heading Before Turn: " + currentHeading)
     print("GEARS Current Grid Location Before Drive: " + str(gearsCurrentGridLocation))
@@ -650,14 +723,16 @@ def MoveToAdjacentGrid(direction):
 
     print("Current Heading After Turn: " + currentHeading)
     print("GEARS Current Grid Location After Drive: " + str(gearsCurrentGridLocation))
-    time.sleep(0.1)
-    DriveStraightDistance(lengthOfGridUnit, lengthOfGridUnit * travelTimeMultiplier)
+    time.sleep(0.05)
+    DriveCorridor(lengthOfGridUnit)
     SetGridLocationValue(gearsCurrentGridLocation, 2)
     ScanAllSides()
 
 def FollowPath(directions):
     for order in directions:
         MoveToAdjacentGrid(order)
+
+
 
 def FindTotalDistanceToTile(start, curLoc, end):
 
@@ -668,8 +743,25 @@ def FindTotalDistanceToTile(start, curLoc, end):
 
 def CheckIfGridLocIsPassable(loc):
     try:
-        temp = (mapData[loc[0]][loc[1]] == 1 or mapData[loc[0]][loc[1]] == 6)
+        if(loc == gearsCurrentGridLocation):
+            temp = False
+        elif(loc[0] < 0 or loc[1] < 0):
+            temp = False
+        elif(mapData[loc[0]][loc[1]] == 1):
+            temp = True
+        elif(mapData[loc[0]][loc[1]] == 2):
+            temp = True
+        elif(mapData[loc[0]][loc[1]] == 3):
+            temp = True
+        elif(mapData[loc[0]][loc[1]] == 6):
+            temp = True
+        elif(mapData[loc[0]][loc[1]] == 7):
+            temp = True
+        else:
+            temp = False
+
         return(temp)
+
     except IndexError:
         return False
     
@@ -689,6 +781,7 @@ def TraceBackPath(mapDirections, destination, start):
         elif(path[-1] == "East"):
             curCheck = [curCheck[0] - 1, curCheck[1]]
 
+    path.reverse()
     return(path)
 
 def AStarPathFinding(dest):
@@ -697,7 +790,9 @@ def AStarPathFinding(dest):
     path = [] #final path
     mapCosts = [] #costs of distance to each map location
     mapPathTo = [] #direction from which grid square was moved into
+    checkedLocs = [] #Checked Locations
 
+    #initialize Arrays for pathfinding
     for i in range(mapWidth):
         mapCosts.append([])
         for j in range(mapHeight):
@@ -708,6 +803,11 @@ def AStarPathFinding(dest):
         for j in range(mapHeight):
             mapPathTo[i].append(0)
 
+    for i in range(mapWidth):
+        checkedLocs.append([])
+        for j in range(mapHeight):
+            checkedLocs[i].append(False)
+
     #A* below
     checkLoc = [gearsCurrentGridLocation[0],gearsCurrentGridLocation[1]]
     
@@ -716,26 +816,26 @@ def AStarPathFinding(dest):
         #update Map
         #CheckAbove
         checkLoc[1] += 1
-        if(CheckIfGridLocIsPassable(checkLoc)):
+        if(CheckIfGridLocIsPassable(checkLoc) and checkedLocs[checkLoc[0]][checkLoc[1]] == False):
             mapCosts[checkLoc[0]][checkLoc[1]] = FindTotalDistanceToTile(gearsCurrentGridLocation, checkLoc, dest)
             mapPathTo[checkLoc[0]][checkLoc[1]] = "North"
 
         #CheckBelow
         checkLoc[1] += -2
-        if(CheckIfGridLocIsPassable(checkLoc)):
+        if(CheckIfGridLocIsPassable(checkLoc) and checkedLocs[checkLoc[0]][checkLoc[1]] == False):
             mapCosts[checkLoc[0]][checkLoc[1]] = FindTotalDistanceToTile(gearsCurrentGridLocation, checkLoc, dest)
             mapPathTo[checkLoc[0]][checkLoc[1]] = "South"
 
         #CheckLeft
         checkLoc[1] += 1
         checkLoc[0] += -1
-        if(CheckIfGridLocIsPassable(checkLoc)):
+        if(CheckIfGridLocIsPassable(checkLoc) and checkedLocs[checkLoc[0]][checkLoc[1]] == False):
             mapCosts[checkLoc[0]][checkLoc[1]] = FindTotalDistanceToTile(gearsCurrentGridLocation, checkLoc, dest)
             mapPathTo[checkLoc[0]][checkLoc[1]] = "West"
 
         #CheckRight
         checkLoc[0] += 2
-        if(CheckIfGridLocIsPassable(checkLoc)):
+        if(CheckIfGridLocIsPassable(checkLoc) and checkedLocs[checkLoc[0]][checkLoc[1]] == False):
             mapCosts[checkLoc[0]][checkLoc[1]] = FindTotalDistanceToTile(gearsCurrentGridLocation, checkLoc, dest)
             mapPathTo[checkLoc[0]][checkLoc[1]] = "East"
 
@@ -744,19 +844,20 @@ def AStarPathFinding(dest):
         minCostLoc = [-1,-1]
         for i in range(mapWidth):
             for j in range(mapHeight):
-                if(mapCosts[i][j] < minCost):
+                if(mapCosts[i][j] < minCost and checkedLocs[i][j] == False):
                     minCost = mapCosts[i][j]
                     minCostLoc = [i, j]
 
-        checkLoc = minCostLoc
+        checkedLocs[minCostLoc[0]][minCostLoc[1]] = True
+        checkLoc = [minCostLoc[0],minCostLoc[1]]
         
         if(minCostLoc == dest):
             foundPath = True
             path = TraceBackPath(mapPathTo, dest, gearsCurrentGridLocation)
 
     return(path)
-    
-def FindLocationToPathTo():
+
+def FindLocationToPathTo(travelToExit):
 
     minLocation = [-1,-1]
     minDistance = math.inf
@@ -765,15 +866,23 @@ def FindLocationToPathTo():
 
     for i in range(mapWidth):
         for j in range(mapHeight):
-            if(mapData[i][j] == 1 or mapData[i][j] == 6):
-                #print("found traversable dest")
-                numberOfLocationsToTravel += 1
-                dist = abs(gearsCurrentGridLocation[0] - i) + abs(gearsCurrentGridLocation[1] - j)
-                #print("dist: " + str(dist) + "(x: " + str(i) + " y: " + str(j) + ")")
+            if(travelToExit):
+                if(mapData[i][j] == 7):
+                    numberOfLocationsToTravel += 1
+                    dist = abs(gearsCurrentGridLocation[0] - i) + abs(gearsCurrentGridLocation[1] - j)
 
-                if(dist < minDistance):
-                    minDistance = dist
-                    minLocation = [i, j]
+                    if(dist < minDistance):
+                        minDistance = dist
+                        minLocation = [i, j]
+
+            else:    
+                if(mapData[i][j] == 1 or mapData[i][j] == 6):
+                    numberOfLocationsToTravel += 1
+                    dist = abs(gearsCurrentGridLocation[0] - i) + abs(gearsCurrentGridLocation[1] - j)
+
+                    if(dist < minDistance):
+                        minDistance = dist
+                        minLocation = [i, j]
 
     if(numberOfLocationsToTravel == 0): #traveled whole map
         return True
@@ -810,8 +919,10 @@ def StartMission():
 
     ScanAllSides()
 
-    while not(FindLocationToPathTo()):
+    while not(FindLocationToPathTo(False)):
         pass
+
+    FindLocationToPathTo(True)
 
     WriteUtilityMapData()
     print("MAP TRAVERSED")
@@ -846,72 +957,10 @@ def StartGEARS():
             StartMission()
         else:
             print("Invalid Choice\n")
-
-def POC1Task1():
-    #Demonstrate GEARS ability to navigate using walls as reference
-    DriveStraightDistance(0, 0)
-
-    angleDisplacement = 0
-    rampFactor = 15
-    angleRampFactor = 10
-    while True:
-
-        angle = MeasureAngle() + angleDisplacement
-
-        left = TestScanL(angle)
-        right = TestScanR(angle)
-        front = TestScanF(angle)
-
-        change = (right - left) / rampFactor
-
-
-        if(front <= 10):
-            BP.set_motor_dps(BP.PORT_B, 0)
-            BP.set_motor_dps(BP.PORT_C, 0) 
-            TurnToAngle(angleDisplacement)
-            if(change > 0):
-                TurnToAngle(90)
-                angleDisplacement += 90
-            else:
-                TurnToAngle(-90)
-                angleDisplacement += -90
-        
-        
-        BP.set_motor_dps(BP.PORT_B, ConvertSpeedToDps(2 + change - (angle / angleRampFactor)))
-        BP.set_motor_dps(BP.PORT_C, ConvertSpeedToDps(2 - change + (angle / angleRampFactor)))    
-
-def TestScanR(angle):
-    RotateVisorToAngle(-310 - (angle * 2))
-    time.sleep(0.3)
-    dis = MeasureDistance()
-    time.sleep(0.2)
-    return(dis)
-
-def TestScanL(angle):
-    RotateVisorToAngle(-125 - (angle * 2))
-    time.sleep(0.3)
-    dis = MeasureDistance()
-    time.sleep(0.2)
-    return(dis)
-        
-def TestScanF(angle):
-    RotateVisorToAngle(8 - (angle * 2))
-    time.sleep(0.3)
-    dis = MeasureDistance()
-    time.sleep(0.2)
-    return(dis)
-
-def POC1Task2(angle):
-    #Demonstrate GEARS ability to make accurate point turns
-    #positive is right negative is left
-    TurnToAngle(angle)
-    #Done
-    
-    
-def POC1Task4(points):
+     
+def Point2PointNav(points):
     #Demonstrate GEARS ability to perform point-to-point navigation in a grid
     global gearsCurrentGridLocation
-    timeFactor = 10
 
     for point in points:
         x = point[0]
@@ -925,7 +974,7 @@ def POC1Task4(points):
         else:
             TurnToAngle(180)
 
-        DriveStraightDistance(dis, dis / timeFactor)
+        DriveStraightDistance(dis, dis / 5)
 
         dis = (x - gearsCurrentGridLocation[0]) * lengthOfGridUnit
         print(dis)
@@ -934,13 +983,15 @@ def POC1Task4(points):
         else:
             TurnToAngle(270)
             
-        DriveStraightDistance(dis, dis / timeFactor)
+        DriveStraightDistance(dis, dis / 5)
 
         gearsCurrentGridLocation = [x, y]
         
         time.sleep(1)
-    
+
 #______________________________________________________________________________
+
+
 
 #TESTING AREA__________________________________________________________________
 
@@ -955,5 +1006,4 @@ except KeyboardInterrupt:
     print("MAP WRITTEN")
     ConvertWorkMapToFinalMap()
     WriteMapData()
-    time.sleep(0.2)
     BP.reset_all()
