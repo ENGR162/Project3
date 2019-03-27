@@ -24,8 +24,8 @@ irNumReads = 5 #number of IR sensor reads until averaging
 magNumReads = 5 #number of IMU magnetic sensor reads until averaging
 initialGyroAngle = 0 #maybe unesscessary var
 
-ultraRightPort = 3 #port number of right side ultrasonic sensor
-ultraLeftPort = 8 #port number of left side ultrasonic sensor
+ultraRightPort = 8 #port number of right side ultrasonic sensor
+ultraLeftPort = 3 #port number of left side ultrasonic sensor
 
 BP = brickpi3.BrickPi3()
 BP.set_sensor_type(BP.PORT_4, BP.SENSOR_TYPE.EV3_GYRO_ABS_DPS) #set up Gyro sensor
@@ -149,7 +149,7 @@ def MeasureAngle():
         except brickpi3.SensorError:
             print ("Gyro Read Sensor Error") #print read error
 
-    print((measurements / successfulMeasures) - initialGyroAngle)
+    #print((measurements / successfulMeasures) - initialGyroAngle)
     return((measurements / successfulMeasures) - initialGyroAngle) #returns average value of angle
 
 def MeasureDistance():
@@ -198,11 +198,12 @@ def MeasureSideDistance(port):
     elif(sideDis < -10.0):
         sideDis = -10.0
 
+    #print("Port: " + str(port) + " Dist: " + str(sideDis))
     return(sideDis) #returns average value of distance
 
 def MeasureRightLeftSideDis():
-    #Right distance is first in array, then left distance
-    return ([MeasureSideDistance(ultraRightPort), MeasureSideDistance(ultraLeftPort)])
+    #Left distance is first in array, then Right distance
+    return ([MeasureSideDistance(ultraLeftPort), MeasureSideDistance(ultraRightPort)])
 
 def MeasureIR():
     measurements = [0.0, 0.0] #variable to store all measurements
@@ -506,7 +507,7 @@ def SetGridLocationToClear(location): #returns True if found exit
 #______________________________________________________________________________
                 
 #Movement_And_Bot_Mechanics____________________________________________________
-wheelDiameter = 3.25 #wheel diameter in cm
+wheelDiameter = 2.480 #wheel diameter in cm
 
 def ConvertSpeedToDps(linearSpeed):
     angularSpeed = 360 * linearSpeed / (wheelDiameter * math.pi)
@@ -533,7 +534,7 @@ def DriveStraightDistance(distance, travelTime):
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
 
-def DriveCorridor(distance, travelSpeed = 15.0, sideFact = 0.1, angleFact = 0.3): #advanced funtion to maintain wall distance 
+def DriveCorridor(distance, travelSpeed = 10.0, sideFact = 0.2, angleFact = 0.05): #advanced funtion to maintain wall distance 
 
     if(distance == 0 or travelSpeed == 0):
         return
@@ -551,7 +552,7 @@ def DriveCorridor(distance, travelSpeed = 15.0, sideFact = 0.1, angleFact = 0.3)
     while distanceToTravel > 0:
         frontDis = MeasureDistance()
 
-        if(frontDis <= 5):
+        if(frontDis <= 20):
             break
 
         #measures
@@ -566,10 +567,13 @@ def DriveCorridor(distance, travelSpeed = 15.0, sideFact = 0.1, angleFact = 0.3)
             distanceGap = -10
 
         #distance calulations
+        """
+        #print("Dist: " + str(distanceToTravel))
         prevDis = currentDistance
         currentDistance = (BP.get_motor_encoder(BP.PORT_B) + BP.get_motor_encoder(BP.PORT_C)) / 2
         stepDis = (currentDistance - prevDis) * math.cos(abs(currentAngle)) #distance moved in desired direction
         distanceToTravel -= stepDis
+        """
 
         #cm/s calculations
         angleSpeed = currentAngle * angleFact #pos if leaning right
@@ -577,13 +581,19 @@ def DriveCorridor(distance, travelSpeed = 15.0, sideFact = 0.1, angleFact = 0.3)
         driveSpeed = travelSpeed / (1 + math.exp(-0.002 * (distanceToTravel - 600))) #logistic feedback control
 
         #motor speed calculation
-        rightAngSpeed = ConvertSpeedToDps(driveSpeed + angleSpeed + distSpeed)
-        leftAngSpeed = ConvertSpeedToDps(driveSpeed - angleSpeed - distSpeed)
+        rightAngSpeed = ConvertSpeedToDps(driveSpeed - angleSpeed + distSpeed)
+        leftAngSpeed = ConvertSpeedToDps(driveSpeed + angleSpeed - distSpeed)
 
         BP.set_motor_dps(BP.PORT_B, rightAngSpeed) #right
         BP.set_motor_dps(BP.PORT_C, leftAngSpeed) #left
 
-        time.sleep(0.02)
+        stepDis = ConvertSpeedToDps(driveSpeed) * math.cos(abs(currentAngle * math.pi / 180))
+        #print("DS: " + str(driveSpeed))
+        #print("ANG: " + str(currentAngle))
+        #print("DTT: " + str(distanceToTravel) + " SD: " +str(stepDis))
+        distanceToTravel -= stepDis
+
+        time.sleep(0.1)
 
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)  
@@ -996,7 +1006,12 @@ def Point2PointNav(points):
 #TESTING AREA__________________________________________________________________
 
 try:
-    StartGEARS()
+    #while True:
+        #print(MeasureIR())
+        #time.sleep(0.05)
+    
+    #StartGEARS()
+    DriveCorridor(40)
         
 except KeyboardInterrupt:
     BP.set_motor_dps(BP.PORT_B, 0)
