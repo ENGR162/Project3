@@ -4,11 +4,11 @@ clear all
 numTimeSteps = 10000; %Num of timesteps
 timeStepDuration = 60 * 30; %In seconds
 time = 1:numTimeSteps; %Array of time
-travelDistance = 
+travelDistance = 4078291;
 tempUpper = 16.75;
 tempLower = 4;
 dTdX = (tempUpper - tempLower) / travelDistance;
-tugForce = 3000000
+tugForce = 3000000;
 
 
 %Initialization of response data
@@ -64,21 +64,18 @@ reachedDestination = 0 %Boolean to check if simulation is over
 curTF = 1 %Current Time Frame
 while reachedDestination == 0
 
-    %The system's current velocity
-    systemVelo = [10, 20]; %update to allow changes to sys velo
-
     %Apparent Velocity Calculation
-    appVeloWater(curTF,1:2) = [waterSpeedX(curTF) - systemVelo(1), waterSpeedY(curTF) - systemVelo(2)];
+    appVeloWater(curTF,1:2) = [waterSpeedX(curTF), waterSpeedY(curTF) - velocity(curTF)];
     appVeloWaterMag(curTF) = VectMag(appVeloWater(curTF, 1:2))
 
-    appVeloAir(curTF,1:2) = [airSpeedX(curTF) - systemVelo(1), airSpeedY(curTF) - systemVelo(2)];
+    appVeloAir(curTF,1:2) = [airSpeedX(curTF), airSpeedY(curTF) - velocity(curTF)];
     appVeloAirMag(curTF) = VectMag(appVeloAir(curTF, 1:2))
 
     %Mass Loss
-    [mass(curTF), lenght(curTF), width(curTF), height(curTF)] = MassLoss([mass(curTF), lenght(curTF), width(curTF), height(curTF)], appVeloWaterMag(curTF), vectMag([airspeedX(curTF), airspeedY(curTF)]), temperature(curTF));
+    [mass(curTF + 1), length(curTF + 1), width(curTF + 1), height(curTF + 1)] = MassLoss([mass(curTF), length(curTF), width(curTF), height(curTF)], appVeloWaterMag(curTF), VectMag([airSpeedX(curTF), airSpeedY(curTF)]), temperature(curTF));
 
     %Water Height
-    heightBelowWater(curTF) = mass(curTF) / (997.0 * width * length)
+    heightBelowWater(curTF) = mass(curTF + 1) / (997.0 * width * length)
     heightAboveWater(curTF) = height - heightBelowWater(curTF)
 
     %External Forces__________________
@@ -104,14 +101,14 @@ while reachedDestination == 0
     formDragAirMag(curTF) = VectMag(formDragAir(curTF, 1:2))
 
     externalForces(curTF) = frictionDragWater(curTF) + formDragWater(curTF) + frictionDragWater(curTF) + formDragWater(curTF) %+ other forces
-    tugAngle = asin(-externalForces(curTF, 1) / tugForce) * 180 / pi
+    tugAngle = asin(-externalForces(curTF, 1) / tugForce)
 
     %Tug Boat Force Calulations________________
 
     forceTotalMag(curTF) = (tugForce * cos(tugAngle)) + externalForces(curTF, 2)
 
     %Distance
-    acceleration(curTF) = forceTotalMag(curTF) / mass(curTF);
+    acceleration(curTF) = forceTotalMag(curTF) / mass(curTF + 1);
     dV = acceleration(curTF) * timeStepDuration;
     velocity(curTF + 1) = velocity(curTF) + dV;
     dX = velocity(curTF + 1) * timeStepDuration;
@@ -124,11 +121,38 @@ while reachedDestination == 0
     %Temperature
     temperature(curTF + 1) = (distance(curTF + 1) * dTdX) + 4;
 
-    curTF = curTF + 1;
-
-    
+    curTF = curTF + 1;  
 end
 
+bergNotMelted = true
+sittingMelt = zeros(numTimeSteps, 1);
+drinkingMelt = 210000000 * timeStepDuration / 86400 %kg per time step
+
+travelTime = curTF
+
+while bergNotMelted
+    
+    velocity(curTF) = 0;
+
+    appVeloWater(curTF,1:2) = [waterSpeedX(curTF), waterSpeedY(curTF)];
+    appVeloWaterMag(curTF) = VectMag(appVeloWater(curTF, 1:2))
+
+    %appVeloAir(curTF,1:2) = [airSpeedX(curTF), airSpeedY(curTF)];
+    %appVeloAirMag(curTF) = VectMag(appVeloAir(curTF, 1:2))
+
+    [mass(curTF + 1), length(curTF + 1), width(curTF + 1), height(curTF + 1)] = MassLoss([mass(curTF), length(curTF), width(curTF), height(curTF)], appVeloWaterMag(curTF), VectMag([airSpeedX(curTF), airSpeedY(curTF)]), tempUpper);
+    sittingMelt = mass(curTF) - mass(curTF + 1)
+    %Drinking
+    mass(curTF + 1) = mass(curTF + 1) - drinkingMelt
+
+    if(mass(curTF + 1))
+        bergNotMelted = false
+        travelTime = curTF - travelTime
+    end
+end
+    
+
+    
 %Arrived Drinking Loop
 
 

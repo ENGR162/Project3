@@ -1,4 +1,4 @@
-function [mag] = VectMag([x, y])
+function [mag] = VectMag(vec)
     %finds the magnitude of the vector
-    mag = sqrt((x ^ 2) + (y ^ 2))
+    mag = sqrt((vec(1) ^ 2) + (vec(2) ^ 2));
 end
