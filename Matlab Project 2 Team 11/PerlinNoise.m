@@ -10,7 +10,7 @@ function [noiseMap] = PerlinNoise(perlinMapSize, maxAmp, increasePerTS, bias)
     for i = 2 : perlinMapSize
         newIncrement = (rand * 2 - 1) * increasePerTS + biasAdd;
         
-        newIncrement = newIncrement - (noiseMap(i - 1) / maxAmp);
+        newIncrement = newIncrement - (noiseMap(i - 1) / 30);
 
         if(abs(noiseMap(i - 1) + newIncrement) < maxAmp)
             noiseMap(i) = noiseMap(i - 1) + newIncrement;
