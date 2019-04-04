@@ -1,5 +1,5 @@
 %To DO: Corials+PGrad, FUnction names need to be standard
-function [costTotal, water] = Proj2_SensitivityMain_Team11(initL,initW, initH, boatNum)
+function [costTotal, waterEff, water] = Proj2_SensitivityMain_Team11(initL, initW, initH, boatNum)
 %Variables
 numTimeSteps = 10000000; %Num of timesteps
 timeStepDuration = 10; %In seconds
@@ -8,9 +8,12 @@ travelDistance = 4078291;
 tempUpper = 16.75;
 tempLower = 4;
 dTdX = (tempUpper - tempLower) / travelDistance; % C / m
+%Labor
+workersNumber = 4;
+workerPayPerSec = 0.00570556;
 %Boat
-boatNumber = boatNum
-boatForce = 3000000
+boatNumber = boatNum;
+boatForce = 3000000;
 tugForce = boatForce * boatNumber;
 %Cost
 gasCost = 5000e-6; %million dollars / day
@@ -121,12 +124,13 @@ while reachedDestination == 0
 
     
     externalForces(curTF,1:2) = frictionDragWater(curTF,1:2) + formDragWater(curTF,1:2) + frictionDragAir(curTF,1:2) + formDragAir(curTF,1:2); %+ other forces
-    if boatNumber == 1
-        if abs(externalForces(curTF, 1)) > tugForce
-            externalForces(curTF, 1) = tugForce;
-        end
-    end
     tugAngle = asin(-externalForces(curTF, 1) / tugForce);
+    if ~isreal(tugAngle)
+        disp("Boat Not Strong Enough :(")
+        burgNotMelted = 0;
+        travelMelted = true;
+        break;
+    end
 
     %Tug Boat Force Calulations________________
 
@@ -143,7 +147,7 @@ while reachedDestination == 0
         reachedDestination = 1;
     end
 
-    disp(travelDistance - distance(curTF))
+    %disp(travelDistance - distance(curTF))
     %disp(length(curTF))
     
     %Temperature
@@ -178,21 +182,24 @@ while bergNotMelted
     end
     
     curTF = curTF + 1; 
-    disp(mass(curTF))
+    %disp(mass(curTF))
 end
 
 %Costs
     %5,000 gallons of gas a day
-    costGas = (travelTime * timeStepDuration / 60 / 60 / 24) * gasCost;
-    costBoat = boatCost;
-    costTotal = costGas + costBoat;
+    costPeople = workerPayPerSec * workersNumber * boatNumber * travelTime * timeStepDuration / 1000000;
+    costGas = boatNumber * (travelTime * timeStepDuration / 60 / 60 / 24) * gasCost;
+    costBoat = boatCost * boatNumber;
+    costTotal = costGas + costBoat + costPeople;
     
+    waterEff = 100 - (100 * mass(travelTime) / mass(1));
     water = drinkingMelt * drinkTime / 4000000;
     if travelMelted == true
         costTotal = 0;
+        waterEff = 0;
         water = 0;
     end
-%{
+    
 %Outputs
 fprintf('\nTravel Statistics for Iceberg: \nLength: %.2f, Width: %.2f, and Height: %.2f', length(1), width(1), height(1))
 fprintf('\n========================================================================')
@@ -200,7 +207,8 @@ if travelMelted == true
     fprintf('\n\nThe iceberg melted on route to Cape Town. It melted with %.2f meters to go.', travelDistance - distance(curTF))
 else
     fprintf('\n\nThe iceberg made it to Cape Town. The trip took %.2f days and the iceberg lost %.2f%% of its mass on the way.', travelTime * timeStepDuration / 60 / 60 / 24, 100 * mass(travelTime) / mass(1))
-    fprintf('\nAt Cape Town, the iceberg lasted for %.2f days, supplying %.2f liters per person.', drinkTime * timeStepDuration / 86400, drinkingMelt * drinkTime / 4000000)
+    fprintf('\nAt Cape Town, the Iceberg supplied %.2f liters per person, and lasted for %.2f days in port.', drinkingMelt * drinkTime / 4000000, drinkTime * timeStepDuration / 86400)
+    fprintf('\nEvery person used 50 liters per day')
     fprintf('\nThe cost of the iceberg was %.2f million dollars.', costTotal)
 end
 
@@ -248,4 +256,3 @@ ylabel('Drag Forces (newtons)')
 legend('Force on X axis (Latitudinal)', 'Force on Y axis (Longitudinal)')
 grid()
 hold off
-%}

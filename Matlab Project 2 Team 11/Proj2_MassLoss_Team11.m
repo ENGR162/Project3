@@ -30,7 +30,7 @@ function [newM, newL, newW, newH] = Proj2_MassLoss_Team11(iceAtt, appVel, velAir
     %Mass stuff
     dV = (iceAtt(2) * iceAtt(3) * iceAtt(4)) - (newL * newW * newH);
     dM = dV * densityIce;
-    disp([dL, dW, dH])
+    %disp([dL, dW, dH])
     newM = iceAtt(1) - dM;
     end
     
