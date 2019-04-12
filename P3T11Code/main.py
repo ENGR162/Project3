@@ -7,6 +7,13 @@ import IR_Functions
 import time
 import math
 
+from IMUFilters import AvgCali
+from IMUFilters import genWindow
+from IMUFilters import WindowFilterDyn
+from IMUFilters import KalmanFilter
+from IMUFilters import FindSTD
+from IMUFilters import InvGaussFilter
+
 #Setup_Instructions____________________________________________________________
 """
 # 1. Face bot north in relation to the map when starting program
@@ -20,8 +27,8 @@ mpu = MPU9250.MPU9250()
 gyroNumReads = 5 #number of gyro reads until averaging
 ultraNumReads = 5 #number of ultrasonic reads until averaging
 hallNumReads = 5 #number of hall reads until averaging
-irNumReads = 5 #number of IR sensor reads until averaging
-magNumReads = 5 #number of IMU magnetic sensor reads until averaging
+irNumReads = 10 #number of IR sensor reads until averaging
+magNumReads = 10 #number of IMU magnetic sensor reads until averaging
 initialGyroAngle = 0 #maybe unesscessary var
 
 ultraRightPort = 8 #port number of right side ultrasonic sensor
@@ -40,6 +47,13 @@ BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D)) #reset posit
 #Grovepi_
 
 IR_Functions.IR_setup(grovepi)
+readMag = [0.0, 0.0, 0.0]
+magField = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+magFieldBias = [0.0, 0.0, 0.0]
+
+readIR = [0.0, 0.0]
+readIRRight = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+readIRLeft = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 #Initial_Setup_________________________________________________________________
 
@@ -172,6 +186,7 @@ def MeasureDistance():
             print ("Ultra Read Sensor Error") #print read error
 
     return(measurements / successfulMeasures) #returns average value of distance
+
 #______________________________________________________________________________
 
 #GrovePi_Functions_____________________________________________________________
@@ -206,48 +221,99 @@ def MeasureRightLeftSideDis():
     return ([MeasureSideDistance(ultraLeftPort), MeasureSideDistance(ultraRightPort)])
 
 def MeasureIR():
-    measurements = [0.0, 0.0] #variable to store all measurements
-    successfulMeasures = 0.0 #variable to count all successful measures
+    std = 100.0
+    global readIR
     
-    while successfulMeasures < irNumReads:
-        try:
-            read = IR_Functions.IR_Read(grovepi) #storing IR from IR sensor
-            measurements[0] += read[0] #adding IR one to total variable
-            measurements[1] += read[1] #adding IR two to total variable
-            successfulMeasures += 1.0 #registering as successful measure
+    try:
+        read = IR_Functions.IR_Read(grovepi) #storing IR from IR sensor
+        #print("Read " + str(read))
+        
+    except TypeError:
+        print ("IR Read TypeError") #print read error
             
-        except TypeError:
-            print ("IR Read TypeError") #print read error
-            
-        except IOError:
-            print ("IR Read IOError") #print read error
+    except IOError:
+        print ("IR Read IOError") #print read error
 
-    return([measurements[0] / successfulMeasures, measurements[1] / successfulMeasures]) #returns average value of IR
+    readIRRight.insert(0, read[0]) #adding IR one to total variable
+    readIRRight.pop(irNumReads)
+    readIRLeft.insert(0, read[1]) #adding IR two to total variable
+    readIRLeft.pop(irNumReads)
+
+    readIR = [0.0, 0.0]
+    avg = [0.0, 0.0]
+    
+    for i in range(0, irNumReads):
+        avg[0] += readIRRight[i]
+        avg[1] += readIRLeft[i]
+        
+    avg[0] /= irNumReads
+    avg[1] /= irNumReads
+
+    correctRightReads = 0
+    correctLeftReads = 0
+    for i in range(0, irNumReads):
+        if(readIRRight[i] < (avg[0] + std) or readIRRight[i] > (avg[0] - std)):
+            readIR[0] += readIRRight[i]
+            correctRightReads += 1
+
+        if(readIRLeft[i] < (avg[1] + std) or readIRLeft[i] > (avg[1] - std)):
+            readIR[1] += readIRLeft[i]
+            correctLeftReads += 1
+
+    readIR[0] /= correctRightReads
+    readIR[1] /= correctLeftReads
+
+    clamp = 12
+
+    if(readIR[0] > clamp):
+        readIR[0] = clamp
+    if(readIR[0] < -clamp):
+        readIR[0] = -clamp
+    if(readIR[1] > clamp):
+        readIR[1] = clamp
+    if(readIR[1] < -clamp):
+        readIR[1] = -clamp
+
+    return(readIR) #returns average value of IR, IR variable is global anyway
 
 #______________________________________________________________________________
 
 #IMU_Functions_________________________________________________________________
 
+width = 1
+depth = 100
+dly = 0.01
+adv = True
+#/////////
+magx = genWindow(width, 0)
+magy = genWindow(width, 0)
+magz = genWindow(width, 0)
+
+biases = AvgCali(mpu, depth, dly)
+state=[[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0,0,0,0,0,0,0,0,0]]#Estimated error (p) and measurement state (x)
+flter=[[0.7,1.0],[0.7,1.0],[0.7,1.0],[0.7,1.0],[0.7,1.0],[0.7,1.0],[5,2],[5,2],[5,2]]
+magRead = [0,0,0]
+std = FindSTD(biases, mpu, dly)
+pick = 1 #1 uses window filter, anything else uses Kalman
+count = 3 #Number of standard deviations used for filtering
+
 def MeasureMagneticFields():
-
-    fields = [0.0, 0.0, 0.0] #variable to store all measurements
-    successfulMeasures = 0.0 #variable to count all successful measures
+    global magRead
+    global magx
+    global magy
+    global magz
+    global state
     
-    while successfulMeasures < magNumReads:
-        try:
-            read = mpu.readMagnet() #IMU magnetic reading
-            fields[0] += read["x"]
-            fields[1] += read["y"]
-            fields[2] += read["z"]
-            successfulMeasures += 1.0 #registering as successful measure
-            
-        except TypeError:
-            print ("IMU Magnetic Read TypeError") #print read error
-            
-        except IOError:
-            print ("IMU Magnetic Read IOError") #print read error
+    mag = mpu.readMagnet()
 
-    return([fields[0] / successfulMeasures, fields[1] / successfulMeasures, fields[2] / successfulMeasures]) #returns average value of Magnetic Field Directions as list
+    state = KalmanFilter(mpu,state,flter,dly)
+    magRead[0] = InvGaussFilter(adv,state[1][6], biases[0],std[0],count)
+    magRead[1] = InvGaussFilter(adv,state[1][7], biases[1],std[1],count)
+    magRead[2] = InvGaussFilter(adv,state[1][8], biases[2],std[2],count)
+
+    magRead[0] = round(magRead[0],  5)
+    magRead[1] = round(magRead[1],  5)
+    magRead[2] = round(magRead[2],  5)
 
 #______________________________________________________________________________
 
@@ -277,43 +343,51 @@ def MeasureMagneticFields():
 """
 #______________________________________________________________________________
 
+irDangerThreshold = 0
+magDangerThreshold = 0
+
 mapWidth = 5
 mapHeight = 5
 
 teamNumber = 11
 mapNumber = 0
 GridUnit = 40
+lengthOfGridUnit = 0
 unit = "cm"
 origin = [2,2]
 mapNotes = "This is an example map"
 hazardsNotes = "This is an example of resource information"
 
-mapData = [[0,0,0,0,0],[0,0,1,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]]
+mapData = []
 
 currentHeading = "North" #Setting inital heading
 gearsCurrentGridLocation = origin
 
-#fixes unit mismatches
-if(unit == "cm"):
-    lengthOfGridUnit = GridUnit
-else:
-    lengthOfGridUnit = GridUnit * 2.54
-
 #MapArraySetup_________________________________________________________________
-#Initialize mapData as 0's
-for i in range(mapWidth):
-    mapData.append([])
-    for j in range(mapHeight):
-        mapData[i].append(0)
+def SetupMap():
 
-mapData[origin[0]][origin[1]] = 3 #change the mapdata to have origin location
+    global lengthOfGridUnit
 
-hazardsFile = open("team" + str(teamNumber) + "_hazards.txt", "w") #write initial hazard file
-hazardsFile.write("Team: " + str(teamNumber) + "\n") #write team num
-hazardsFile.write("Map: " + str(mapNumber) + "\n") #write map num
-hazardsFile.write("Notes: " + str(hazardsNotes) + "\n") #write hazard notes
-hazardsFile.write("\nResource Type, Parameter of Interest, Parameter, Resource X Coordinate, Resource Y Coordinate\n") #write headers
-hazardsFile.close() #close hazard file
+    #fixes unit mismatches
+    if(unit == "cm"):
+        lengthOfGridUnit = GridUnit
+    else:
+        lengthOfGridUnit = GridUnit * 2.54
+    
+    #Initialize mapData as 0's
+    for i in range(mapWidth):
+        mapData.append([])
+        for j in range(mapHeight):
+            mapData[i].append(0)
+
+    mapData[origin[0]][origin[1]] = 3 #change the mapdata to have origin location
+
+    hazardsFile = open("team" + str(teamNumber) + "_hazards.txt", "w") #write initial hazard file
+    hazardsFile.write("Team: " + str(teamNumber) + "\n") #write team num
+    hazardsFile.write("Map: " + str(mapNumber) + "\n") #write map num
+    hazardsFile.write("Notes: " + str(hazardsNotes) + "\n") #write hazard notes
+    hazardsFile.write("\nResource Type, Parameter of Interest, Parameter, Resource X Coordinate, Resource Y Coordinate\n") #write headers
+    hazardsFile.close() #close hazard file
 
 #MapArrayFunctions_____________________________________________________________
 
@@ -446,6 +520,10 @@ def SetGridLocationValue(location, value):
         elif(mapData[location[0]][location[1]] == 6):
             mapData[location[0]][location[1]] = 7
 
+    elif(value == 4 or value == 5):
+        if(mapData[location[0]][location[1]] != 3):
+            mapData[location[0]][location[1]] = value
+    
     else:
         mapData[location[0]][location[1]] = value
 
@@ -507,7 +585,7 @@ def SetGridLocationToClear(location): #returns True if found exit
 #______________________________________________________________________________
                 
 #Movement_And_Bot_Mechanics____________________________________________________
-wheelDiameter = 2.480 #wheel diameter in cm
+wheelDiameter = 2.300 #wheel diameter in cm
 
 def ConvertSpeedToDps(linearSpeed):
     angularSpeed = 360 * linearSpeed / (wheelDiameter * math.pi)
@@ -534,11 +612,13 @@ def DriveStraightDistance(distance, travelTime):
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
 
-def DriveCorridor(distance, travelSpeed = 10.0, sideFact = 0.2, angleFact = 0.05): #advanced funtion to maintain wall distance 
+def DriveCorridor(distance, travelSpeed = 7.0, sideFact = 0.1, angleFact = 0.1): #advanced funtion to maintain wall distance 
 
+    print("Driving")
     if(distance == 0 or travelSpeed == 0):
         return
 
+    #print(distance)
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
     BP.offset_motor_encoder(BP.PORT_B, BP.get_motor_encoder(BP.PORT_B)) #reset positions
@@ -547,13 +627,23 @@ def DriveCorridor(distance, travelSpeed = 10.0, sideFact = 0.2, angleFact = 0.05
     RotateVisorToAngle(8)
     startingAngle = MeasureAngle()
     distanceToTravel = ConvertSpeedToDps(distance)
-    currentDistance = 0.0
+    time.sleep(0.4) # wait for visor
+    #print(distanceToTravel)
 
     while distanceToTravel > 0:
+        #update current values
+        MeasureIR()
+        MeasureIR()
+        MeasureIR()
+        #MeasureIR()
+        #MeasureIR()
+        MeasureMagneticFields()
         frontDis = MeasureDistance()
 
-        if(frontDis <= 20):
+        if(frontDis <= 22): #break out if too close to wall
+            print("Broke due to wall")
             break
+            #pass
 
         #measures
         currentAngle = MeasureAngle() - startingAngle
@@ -566,23 +656,24 @@ def DriveCorridor(distance, travelSpeed = 10.0, sideFact = 0.2, angleFact = 0.05
         elif(distanceGap < -10):
             distanceGap = -10
 
-        #distance calulations
-        """
-        #print("Dist: " + str(distanceToTravel))
-        prevDis = currentDistance
-        currentDistance = (BP.get_motor_encoder(BP.PORT_B) + BP.get_motor_encoder(BP.PORT_C)) / 2
-        stepDis = (currentDistance - prevDis) * math.cos(abs(currentAngle)) #distance moved in desired direction
-        distanceToTravel -= stepDis
-        """
-
         #cm/s calculations
+        if(useDanger == True):    
+            magneticValStorage = AdjustToMag()        
+            #magneticSpeed = magneticValStorage[0] * magneticValStorage[1]
+            magneticSpeed = 0
+            irSpeed = AdjustToIR()
+
+        else:
+            magneticSpeed = 0
+            irSpeed = 0
+        
         angleSpeed = currentAngle * angleFact #pos if leaning right
         distSpeed = distanceGap * sideFact #pos if straying right
         driveSpeed = travelSpeed / (1 + math.exp(-0.002 * (distanceToTravel - 600))) #logistic feedback control
 
         #motor speed calculation
-        rightAngSpeed = ConvertSpeedToDps(driveSpeed - angleSpeed + distSpeed)
-        leftAngSpeed = ConvertSpeedToDps(driveSpeed + angleSpeed - distSpeed)
+        rightAngSpeed = ConvertSpeedToDps(driveSpeed - angleSpeed + distSpeed + magneticSpeed - irSpeed)
+        leftAngSpeed = ConvertSpeedToDps(driveSpeed + angleSpeed - distSpeed - magneticSpeed + irSpeed)
 
         BP.set_motor_dps(BP.PORT_B, rightAngSpeed) #right
         BP.set_motor_dps(BP.PORT_C, leftAngSpeed) #left
@@ -593,8 +684,9 @@ def DriveCorridor(distance, travelSpeed = 10.0, sideFact = 0.2, angleFact = 0.05
         #print("DTT: " + str(distanceToTravel) + " SD: " +str(stepDis))
         distanceToTravel -= stepDis
 
-        time.sleep(0.1)
+        time.sleep(0.02)
 
+    TurnToAngle(startingAngle)
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)  
 
@@ -608,6 +700,51 @@ def DriveAtSpeed(linearSpeed, travelTime):
     
     BP.set_motor_dps(BP.PORT_B, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
+
+def AdjustToIR():
+    k = 1 / 10
+    magnitude = round(math.sqrt(pow(readIR[0],2) + pow(readIR[1],2)), 5)
+    #print("Reading: " + str(readIR[0]) + "    " + str(readIR[1]))
+
+    direction = 1
+    if(readIR[0] - readIR[1] != 0):
+        direction = (readIR[0] - readIR[1]) / math.fabs(readIR[0] - readIR[1])
+    
+    output = k * magnitude * direction
+    print("Output: " + str(output))
+    
+    if(math.fabs(output) >= irDangerThreshold):
+        if(mapData[gearsCurrentGridLocation[0]][gearsCurrentGridLocation[1]] != 4):
+            SetGridLocationValue(gearsCurrentGridLocation, 4)
+            WriteMapHazard("IR", output / k, gearsCurrentGridLocation[0], gearsCurrentGridLocation[1])
+            print("Wrote IR Danger")
+        else:
+            pass
+    else:
+        output = 0
+            
+    return (output)
+
+def AdjustToMag():
+    k = 1 / 5
+    magnitude = round(math.sqrt(pow(magRead[0],2) + pow(magRead[1],2) + pow(magRead[2],2)), 5)
+    #print("Reading: " + str(magRead))
+
+    if(magRead[1] == 0):
+        magRead[1] = 1
+
+    if(magnitude >= magDangerThreshold):
+        if(mapData[gearsCurrentGridLocation[0]][gearsCurrentGridLocation[1]] != 5):
+            SetGridLocationValue(gearsCurrentGridLocation, 5)
+            WriteMapHazard("Magnet", magnitude, gearsCurrentGridLocation[0], gearsCurrentGridLocation[1])
+            print("Wrote Magnetic Danger")
+        else:
+            pass
+    else:
+        magnitude = 0
+    
+    direction = round(magRead[1] / math.fabs(magRead[1]))
+    return ([magnitude, direction])
 
 def TurnToAngle(desiredAngle):
     currentAngle = MeasureAngle()
@@ -762,6 +899,10 @@ def CheckIfGridLocIsPassable(loc):
         elif(mapData[loc[0]][loc[1]] == 2):
             temp = True
         elif(mapData[loc[0]][loc[1]] == 3):
+            temp = True
+        elif(mapData[loc[0]][loc[1]] == 4):
+            temp = True
+        elif(mapData[loc[0]][loc[1]] == 5):
             temp = True
         elif(mapData[loc[0]][loc[1]] == 6):
             temp = True
@@ -932,7 +1073,11 @@ def StartMission():
     while not(FindLocationToPathTo(False)):
         pass
 
-    FindLocationToPathTo(True)
+    FindLocationToPathTo(True) #Travel to closest Exit
+
+    #Exit
+    DriveCorridor(40.0)
+    
 
     WriteUtilityMapData()
     print("MAP TRAVERSED")
@@ -1001,17 +1146,73 @@ def Point2PointNav(points):
 
 #______________________________________________________________________________
 
+# GEARS Operation Key #Use during operation
+#
+# 0 = Unknown
+# 1 = Open but untraveled path
+# 2 = Traveled path and clear
+# 3 = Origin
+# 4 = IR Danger grid location
+# 5 = Magnetic Danger grid location
+# 6 = Exit point untraveled
+# 7 = Exit point traveled
 
+irDangerThreshold = 1000
+magDangerThreshold = 1000
+useDanger = False
 
+mapWidth = 9
+mapHeight = 7
+
+teamNumber = 11
+mapNumber = 40
+GridUnit = 40 #grid size
+lengthOfGridUnit = 40 #grid size in cm
+unit = "cm"
+origin = [4,1]
+mapNotes = "This is an example map"
+hazardsNotes = "This is an example of resource information"
+
+mapData = []
+
+currentHeading = "North" #Setting inital heading DONT EDIT
+gearsCurrentGridLocation = origin
+
+SetupMap()
 #TESTING AREA__________________________________________________________________
 
 try:
-    #while True:
-        #print(MeasureIR())
-        #time.sleep(0.05)
-    
-    #StartGEARS()
-    DriveCorridor(40)
+    """
+    while True:
+        MeasureIR()
+        test = AdjustToIR()
+        #print(test)
+        BP.set_motor_dps(BP.PORT_B, -5 * test + 100)
+        BP.set_motor_dps(BP.PORT_C, 5 * test + 100)
+        #BP.set_motor_dps(BP.PORT_B, 10)
+        time.sleep(0.2)"""
+    """
+    while True:
+        MeasureMagneticFields()
+        test = AdjustToMag()
+        #print(test)
+        BP.set_motor_dps(BP.PORT_B, 5 * test[0] * test[1])
+        #BP.set_motor_dps(BP.PORT_B, 10)
+        time.sleep(0.2)
+    """
+    """
+    while True:
+        speed = AdjustToIR()
+        print("Speed " + str(speed))
+        BP.set_motor_dps(BP.PORT_B, -speed)
+        BP.set_motor_dps(BP.PORT_C, speed)
+
+        print(readIR)
+        MeasureIR()
+        time.sleep(0.05)
+    """
+    StartGEARS()
+    #Point2PointNav([[2,0],[2,3],[2,1],[3,1],[4,1],[1,1],[1,3]])
         
 except KeyboardInterrupt:
     BP.set_motor_dps(BP.PORT_B, 0)

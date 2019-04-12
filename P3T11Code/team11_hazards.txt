@@ -1,5 +1,5 @@
 Team: 11
-Map: 0
+Map: 40
 Notes: This is an example of resource information
 
 Resource Type, Parameter of Interest, Parameter, Resource X Coordinate, Resource Y Coordinate
